@@ -231,6 +231,31 @@ pairadv_update_pelo <- function(p1_r, p2_r, p1_adv_p2, p2_adv_p1, K2, X){
   c(p1_adv_p2_new, p2_adv_p1_new)
 }
 
+#' Linear indices of pairwise-advantage entries (internal)
+#'
+#' For every match, returns the linear indices of `pair_adv_mat[A, B]` and
+#' `pair_adv_mat[B, A]`, so the match loops can read and write the matrix
+#' without name lookups. Also performs, on the starting values, the same
+#' antisymmetry check as `pairadv_update_pelo()`.
+#'
+#' @param pair_adv_mat Numeric matrix with player names as row and column names.
+#' @param A,B Character vectors of player names (first and second player of each match).
+#' @return List with integer vectors `ab` and `ba`.
+#' @keywords internal
+#' @noRd
+.pair_adv_lin_index <- function(pair_adv_mat, A, B) {
+  ra <- match(A, rownames(pair_adv_mat)); rb <- match(B, rownames(pair_adv_mat))
+  ca <- match(A, colnames(pair_adv_mat)); cb <- match(B, colnames(pair_adv_mat))
+  if (anyNA(ra) || anyNA(rb) || anyNA(ca) || anyNA(cb)) stop("subscript out of bounds")
+  nr <- nrow(pair_adv_mat)
+  ab <- ra + (cb - 1L) * nr
+  ba <- rb + (ca - 1L) * nr
+  if (any(pair_adv_mat[ab] + pair_adv_mat[ba] != 0)) {
+    stop("p1_adv_p2 is not negative p2_adv_p1.")
+  }
+  list(ab = ab, ba = ba)
+}
+
 #' Negative Log-Likelihood for Elo Ratings
 #'
 #' Computes the negative log-likelihood of a set of Elo ratings given observed match outcomes.
@@ -269,48 +294,33 @@ get_negloglike_elo <- cmpfun(function(K_guess, data, current_ratings){
     stop("The column 'match_result' must contain only 0 (= first player lost) or 1 (= first player won) values.")
   }
 
-  n <- nrow(df)                     # number of matches
-  outcome_prob <- numeric(n)        # vector to store predicted probabilities for each match outcome
-
-  # Initialize ratings for all players
-  ratings <- current_ratings
-
-  # Get all unique players from columns A and B and assign an index to each
+  # Map each match's players to integer indices (players sorted alphabetically,
+  # matching the row order of initialize_ratings(sort(players), ...))
   players <- sort(unique(c(df$A, df$B)))
-  player_index <- setNames(seq_along(players), players)   # named vector: player name -> index
+  p1_inds <- match(df$A, players)
+  p2_inds <- match(df$B, players)
 
-  # Map each match's players to their indices in the ratings table
-  p1_inds <- player_index[df$A]  # indices for player A in each match
-  p2_inds <- player_index[df$B]  # indices for player B in each match
+  # Work on plain numeric vectors inside the loop (no data.frame access per game)
+  r <- current_ratings$Ratings
+  X <- df$match_result
+  n <- length(X)
+  outcome_prob <- numeric(n)
 
-  # Loop over each match to compute probabilities and update ratings
-  for (r in seq_len(nrow(df))) {
+  # Sequential game-by-game Elo updates
+  for (g in seq_len(n)) {
+    i <- p1_inds[g]
+    j <- p2_inds[g]
 
-    # Get player indices for this match
-    p1_ind <- p1_inds[r]
-    p2_ind <- p2_inds[r]
+    # Predicted probability that player A wins (same formula as winning_prob_elo)
+    p <- 1 / (1 + 10^(-(r[i] - r[j]) / 400))
 
-    # Extract current ratings
-    p1_r <- ratings$Ratings[p1_ind]
-    p2_r <- ratings$Ratings[p2_ind]
+    # Probability of the observed outcome
+    outcome_prob[g] <- if (X[g] == 1) p else 1 - p
 
-    X <- df$match_result[r]  # observed match outcome (1 if player A won, 0 otherwise)
-
-    # Calculate predicted probability that player A wins
-    p <- winning_prob_elo(p1_r, p2_r)
-
-    # Store the probability corresponding to the actual match outcome
-    if(X == 1){
-      outcome_prob[r] <- p           # probability that the observed winner won
-    } else {
-      outcome_prob[r] <- 1 - p       # probability that the observed loser lost
-    }
-
-    # Update Elo ratings based on match result
-    new_ratings <- ratings_update_elo(p1_r, p2_r, K_guess, X)
-    ratings$Ratings[p1_ind] <- new_ratings[1]
-    ratings$Ratings[p2_ind] <- new_ratings[2]
-
+    # Elo update (same as ratings_update_elo)
+    upd <- K_guess * (X[g] - p)
+    r[i] <- r[i] + upd
+    r[j] <- r[j] - upd
   }
 
   # Prevent log(0) by imposing a minimum probability
@@ -367,63 +377,43 @@ get_negloglike_pelo <- cmpfun(function(KK2_guess, data, current_ratings, current
     stop("The column 'match_result' must contain only 0 (= first player lost) or 1 (= first player won) values.")
   }
 
-  n <- nrow(df)                  # number of matches
-  outcome_prob <- numeric(n)     # vector to store predicted probabilities for each match outcome
-
-  # Initialize ratings for all players
-  ratings <- current_ratings
-
-  # Initialize pairwise advantage matrix
-  pair_adv_mat <- current_pair_adv_mat
-
-  # Extract unique players and assign an index to each
+  # Map each match's players to integer indices (players sorted alphabetically,
+  # matching the row order of initialize_ratings(sort(players), ...))
   players <- sort(unique(c(df$A, df$B)))
-  player_index <- setNames(seq_along(players), players)   # named vector: player name -> index
+  p1_inds <- match(df$A, players)
+  p2_inds <- match(df$B, players)
 
-  # Map each match's players to their indices in the ratings table
-  p1_inds <- player_index[df$A]  # indices for player A in each match
-  p2_inds <- player_index[df$B]  # indices for player B in each match
+  # Pairwise advantage matrix: precompute linear indices of A[p1, p2] and A[p2, p1]
+  pair_adv_mat <- current_pair_adv_mat
+  idx <- .pair_adv_lin_index(pair_adv_mat, df$A, df$B)
 
-  # Loop over each match
-  for (r in seq_len(nrow(df))) {
+  r <- current_ratings$Ratings
+  X <- df$match_result
+  n <- length(X)
+  outcome_prob <- numeric(n)
 
-    # Get player names and indices for this match
-    p1_name <- df$A[r]
-    p2_name <- df$B[r]
+  # Sequential game-by-game P-Elo updates
+  for (g in seq_len(n)) {
+    i <- p1_inds[g]
+    j <- p2_inds[g]
+    ab <- idx$ab[g]
+    ba <- idx$ba[g]
 
-    p1_ind <- p1_inds[r]
-    p2_ind <- p2_inds[r]
+    # Predicted probability that player A wins (same formula as winning_prob_pelo)
+    p <- 1 / (1 + 10^(-(r[i] + pair_adv_mat[ab] - r[j]) / 400))
 
-    # Extract current ratings
-    p1_r <- ratings$Ratings[p1_ind]
-    p2_r <- ratings$Ratings[p2_ind]
+    # Probability of the observed outcome
+    outcome_prob[g] <- if (X[g] == 1) p else 1 - p
 
-    # Extract current pairwise advantages
-    p1_adv_p2 <- pair_adv_mat[p1_name, p2_name]
-    p2_adv_p1 <- pair_adv_mat[p2_name, p1_name]
+    # Rating update (same as ratings_update_pelo)
+    upd <- K_guess * (X[g] - p)
+    r[i] <- r[i] + upd
+    r[j] <- r[j] - upd
 
-    X <- df$match_result[r]  # observed match outcome (1 if player A won, 0 otherwise)
-
-    # Calculate predicted probability that player A wins
-    p <- winning_prob_pelo(p1_r, p2_r, p1_adv_p2)
-
-    # Store probability corresponding to the actual match outcome
-    if(X == 1){
-      outcome_prob[r] <- p           # probability that observed winner won
-    }else{
-      outcome_prob[r] <- 1 - p       # probability that observed loser lost
-    }
-
-    # Rating update (PELO)
-    new_ratings <- ratings_update_pelo(p1_r, p2_r, p1_adv_p2, K_guess, X)
-    ratings$Ratings[p1_ind] <- new_ratings[1]
-    ratings$Ratings[p2_ind] <- new_ratings[2]
-
-    # Pairwise Advantage update
-    new_pair_adv <- pairadv_update_pelo(p1_r, p2_r, p1_adv_p2, p2_adv_p1, K2_guess, X)
-    pair_adv_mat[p1_name, p2_name] <- new_pair_adv[1]
-    pair_adv_mat[p2_name, p1_name] <- new_pair_adv[2]
-
+    # Pairwise advantage update (same as pairadv_update_pelo)
+    upd2 <- K2_guess * (X[g] - p)
+    pair_adv_mat[ab] <- pair_adv_mat[ab] + upd2
+    pair_adv_mat[ba] <- pair_adv_mat[ba] - upd2
   }
 
   # Prevent log(0) by imposing a minimum probability
@@ -517,38 +507,35 @@ run_elo <- cmpfun(function(K, data, current_ratings, player_id_mapping, new_play
     )
   }
 
-  # Create lookup table: player name -> row index in the ratings table
-  rating_index <- setNames(seq_len(nrow(ratings)), ratings$Player)
+  # Integer indices of both players in the ratings table, for every match
+  p1_inds <- match(df$A, ratings$Player)
+  p2_inds <- match(df$B, ratings$Player)
 
-  # Prepare integer indices for each match in the dataframe
-  p1_inds <- rating_index[df$A]
-  p2_inds <- rating_index[df$B]
+  # Work on a plain numeric vector inside the loop (no data.frame access per game)
+  r <- ratings$Ratings
+  X <- df$match_result
 
   # Loop over each match to update ratings and record predicted probabilities
-  for (r in seq_len(nrow(df))) {
-    p1_ind <- p1_inds[r]  # row index for player A
-    p2_ind <- p2_inds[r]  # row index for player B
+  for (g in seq_along(X)) {
+    i <- p1_inds[g]
+    j <- p2_inds[g]
 
-    # Extract current ratings for both players
-    p1_r <- ratings$Ratings[p1_ind]
-    p2_r <- ratings$Ratings[p2_ind]
+    # Predict winning probability for player A (same formula as winning_prob_elo)
+    p <- 1 / (1 + 10^(-(r[i] - r[j]) / 400))
+    preds[g] <- p
 
-    # Predict winning probability for player A
-    preds[r] <- winning_prob_elo(p1_r, p2_r)
-
-    # Observed match outcome
-    X <- df$match_result[r]
-
-    # Update ratings according to Elo formula
-    new_ratings <- ratings_update_elo(p1_r, p2_r, K_guess, X)
-    ratings$Ratings[p1_ind] <- new_ratings[1]
-    ratings$Ratings[p2_ind] <- new_ratings[2]
+    # Update ratings according to Elo formula (same as ratings_update_elo)
+    upd <- K_guess * (X[g] - p)
+    r[i] <- r[i] + upd
+    r[j] <- r[j] - upd
 
     if(keep_history){
       # Save current ratings snapshot to history
-      ratings_hist[[r + 1]] <- ratings
+      ratings$Ratings <- r
+      ratings_hist[[g + 1]] <- ratings
     }
   }
+  ratings$Ratings <- r
 
   # Return final ratings, full rating history, K-factor, predictions, and updated player ID mapping
   return(list(
@@ -675,52 +662,45 @@ run_pelo <- cmpfun(function(KK2, data, current_ratings, current_pair_adv_mat, pl
     pair_adv_mat <- new_pair_adv_mat
   }
 
-  # Create lookup: player name -> row index in ratings table
-  rating_index <- setNames(seq_len(nrow(ratings)), ratings$Player)
+  # Integer indices of both players in the ratings table, and linear indices of
+  # A[p1, p2] and A[p2, p1] in the pairwise advantage matrix, for every match
+  p1_inds <- match(df$A, ratings$Player)
+  p2_inds <- match(df$B, ratings$Player)
+  idx <- .pair_adv_lin_index(pair_adv_mat, df$A, df$B)
 
-  # Prepare integer indices for each match
-  p1_inds <- rating_index[df$A]
-  p2_inds <- rating_index[df$B]
+  # Work on a plain numeric vector inside the loop (no data.frame access per game)
+  r <- ratings$Ratings
+  X <- df$match_result
 
   # Loop over each match
-  for (r in seq_len(nrow(df))) {
-    p1_ind <- p1_inds[r]  # row index for player A
-    p2_ind <- p2_inds[r]  # row index for player B
+  for (g in seq_along(X)) {
+    i <- p1_inds[g]
+    j <- p2_inds[g]
+    ab <- idx$ab[g]
+    ba <- idx$ba[g]
 
-    # Extract current ratings for both players
-    p1_r <- ratings$Ratings[p1_ind]
-    p2_r <- ratings$Ratings[p2_ind]
+    # Predict probability of player A winning (same formula as winning_prob_pelo)
+    p <- 1 / (1 + 10^(-(r[i] + pair_adv_mat[ab] - r[j]) / 400))
+    preds[g] <- p
 
-    # Extract player names
-    p1_name <- df$A[r]
-    p2_name <- df$B[r]
-
-    # Extract current pairwise advantages
-    p1_adv_p2 <- pair_adv_mat[p1_name, p2_name]
-    p2_adv_p1 <- pair_adv_mat[p2_name, p1_name]
-
-    # Predict probability of player A winning
-    preds[r] <- winning_prob_pelo(p1_r, p2_r, p1_adv_p2)
-
-    # Observed match outcome
-    X <- df$match_result[r]
-
-    # Update player ratings (PELO)
-    new_ratings <- ratings_update_pelo(p1_r, p2_r, p1_adv_p2, K_guess, X)
-    ratings$Ratings[p1_ind] <- new_ratings[1]
-    ratings$Ratings[p2_ind] <- new_ratings[2]
+    # Update player ratings (same as ratings_update_pelo)
+    upd <- K_guess * (X[g] - p)
+    r[i] <- r[i] + upd
+    r[j] <- r[j] - upd
     if(keep_history){
-      ratings_hist[[r + 1]] <- ratings  # save snapshot of ratings
+      ratings$Ratings <- r
+      ratings_hist[[g + 1]] <- ratings  # save snapshot of ratings
     }
 
-    # Update pairwise advantage matrix
-    new_pair_adv <- pairadv_update_pelo(p1_r, p2_r, p1_adv_p2, p2_adv_p1, K2_guess, X)
-    pair_adv_mat[p1_name, p2_name] <- new_pair_adv[1]
-    pair_adv_mat[p2_name, p1_name] <- new_pair_adv[2]
+    # Update pairwise advantage matrix (same as pairadv_update_pelo)
+    upd2 <- K2_guess * (X[g] - p)
+    pair_adv_mat[ab] <- pair_adv_mat[ab] + upd2
+    pair_adv_mat[ba] <- pair_adv_mat[ba] - upd2
     if(keep_history){
-      pair_adv_hist[[r + 1]] <- pair_adv_mat  # save snapshot of pairwise advantages
+      pair_adv_hist[[g + 1]] <- pair_adv_mat  # save snapshot of pairwise advantages
     }
   }
+  ratings$Ratings <- r
 
   # Return final ratings, full history, pairwise advantages, K-factors, predictions, and updated player IDs
   return(list(
@@ -877,23 +857,26 @@ hypo_bet_scheme_value <- cmpfun(function(bookmaker_preds, bettor_preds, actual_o
     0
   )
 
-  # Initialize profits vector
+  # Matches that have a bet (non-NA side)
+  valid_idx <- which(!is.na(bettor_side))
+  if(length(valid_idx) == 0){
+    return(numeric(n_sims))
+  }
+
+  # Profit of each possible bet: win = odds-1, loss = -1
+  bet_profit <- chosen_side_wins[valid_idx] * (chosen_odds[valid_idx] - 1) +
+    (1 - chosen_side_wins[valid_idx]) * (-1)
+
+  # Bootstrap: each simulation samples n_bets bets with replacement.
+  # Simulations are drawn in blocks; the random draws are the same, in the same
+  # order, as drawing one simulation at a time.
+  m <- min(n_bets, length(valid_idx))
   profits <- numeric(n_sims)
-
-  for (s in 1:n_sims) {
-    # Sample n_bets with replacement among matches that have a bet (non-NA side)
-    valid_idx <- which(!is.na(bettor_side))
-    if(length(valid_idx) == 0){
-      profits[s] <- 0
-      next
-    }
-    idx <- sample(valid_idx, size = min(n_bets, length(valid_idx)), replace = TRUE)
-
-    # Compute profit: win = odds-1, loss = -1
-    profit_s <- sum(chosen_side_wins[idx] * (chosen_odds[idx] - 1) +
-                      (1 - chosen_side_wins[idx]) * (-1))
-
-    profits[s] <- profit_s
+  block <- max(1L, floor(2e7 / m))
+  for (s0 in seq(1, n_sims, by = block)) {
+    k <- min(block, n_sims - s0 + 1)
+    draws <- sample.int(length(valid_idx), size = k * m, replace = TRUE)
+    profits[s0:(s0 + k - 1)] <- colSums(matrix(bet_profit[draws], nrow = m))
   }
 
   return(profits)
