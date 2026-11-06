@@ -1,0 +1,384 @@
+{
+  "data": {
+    "matches": 86315,
+    "players": 2246,
+    "first": "1991-01-07",
+    "last": "2024-12-18",
+    "train": 69052,
+    "test": 17263,
+    "test_start": "2017-02-13",
+    "test_share_met_before": 0.43462898,
+    "test_share_met_3plus": 0.1295835,
+    "test_share_met_5plus": 0.047848
+  },
+  "fit": {
+    "Elo": {
+      "K": 25.31821556,
+      "K2": 0,
+      "H": 0,
+      "Ks": 0,
+      "nll_train": 42219.23641885,
+      "nll_per_match": 0.61141222
+    },
+    "PELO": {
+      "K": 25.20891984,
+      "K2": 11.76250341,
+      "H": 0,
+      "Ks": 0,
+      "nll_train": 42211.70485566,
+      "nll_per_match": 0.61130315
+    },
+    "sElo": {
+      "K": 20.66462973,
+      "K2": 0,
+      "H": 0,
+      "Ks": 12.87034192,
+      "nll_train": 41781.01125982,
+      "nll_per_match": 0.60506591
+    },
+    "sPELO": {
+      "K": 20.54808615,
+      "K2": 12.2488893,
+      "H": 0,
+      "Ks": 12.88824664,
+      "nll_train": 41773.13178469,
+      "nll_per_match": 0.6049518
+    }
+  },
+  "test": {
+    "Elo": [17263, 0.62577731, 0.21826154, 0.64229856, 0.70919743],
+    "PELO": [17263, 0.62565915, 0.21821472, 0.64224063, 0.70927826],
+    "sElo": [17263, 0.62199944, 0.21651358, 0.65185657, 0.71563967],
+    "sPELO": [17263, 0.62185444, 0.21646171, 0.65237792, 0.71571822]
+  },
+  "test_repeat3": {
+    "Elo": [2237, 0.6042742, 0.20835904, 0.67098793, 0.73613116],
+    "PELO": [2237, 0.60461182, 0.20854167, 0.67590523, 0.73554699],
+    "sElo": [2237, 0.59936966, 0.20629845, 0.68395172, 0.74233377],
+    "sPELO": [2237, 0.59961763, 0.20646433, 0.68261064, 0.7417712]
+  },
+  "pelo_vs_elo": [-0.00011816, -0.00033044, 0.00010198],
+  "spelo_vs_selo": [-0.000145, -0.00035762, 0.00008381],
+  "selo_vs_elo": [-0.00377787, -0.00565292, -0.00183319],
+  "pelo_vs_elo_repeat3": [0.00033762, -0.00091906, 0.00155337],
+  "spelo_vs_selo_repeat3": [0.00024797, -0.00107532, 0.00149402],
+  "beta_alone": {
+    "PELO": [-0.00010803, -0.00032018, 0.00010395],
+    "sPELO": [-0.0001295, -0.00034785, 0.0000919],
+    "PELO_repeat3": [0.00032977, -0.00094963, 0.00157993],
+    "sPELO_repeat3": [0.00023011, -0.00107068, 0.00148929]
+  },
+  "profile_K2": {
+    "PELO": [
+      {
+        "K2": 0,
+        "delta_nll": 0
+      },
+      {
+        "K2": 1,
+        "delta_nll": -1.25615519
+      },
+      {
+        "K2": 2,
+        "delta_nll": -2.39234854
+      },
+      {
+        "K2": 5,
+        "delta_nll": -5.09917497
+      },
+      {
+        "K2": 10,
+        "delta_nll": -7.36988207
+      },
+      {
+        "K2": 20,
+        "delta_nll": -4.13773098
+      },
+      {
+        "K2": 40,
+        "delta_nll": 29.68019205
+      }
+    ],
+    "sPELO": [
+      {
+        "K2": 0,
+        "delta_nll": 0
+      },
+      {
+        "K2": 1,
+        "delta_nll": -1.26039649
+      },
+      {
+        "K2": 2,
+        "delta_nll": -2.40652053
+      },
+      {
+        "K2": 5,
+        "delta_nll": -5.17320484
+      },
+      {
+        "K2": 10,
+        "delta_nll": -7.62382467
+      },
+      {
+        "K2": 20,
+        "delta_nll": -4.94787901
+      },
+      {
+        "K2": 40,
+        "delta_nll": 27.37519005
+      }
+    ]
+  },
+  "persistence_player_adjusted": {
+    "sElo": {
+      "pairs": 4424,
+      "cov": 0.00331298,
+      "p_value": 0.0136,
+      "z": 2.23251641,
+      "implied_sd_prob": 0.05755849
+    },
+    "sElo_min8": {
+      "pairs": 487,
+      "cov": 0.00538283,
+      "p_value": 0.0102,
+      "z": 2.28539485,
+      "implied_sd_prob": 0.07336774
+    }
+  },
+  "persistence": {
+    "Elo": {
+      "pairs": 4424,
+      "matches": 23964,
+      "cov": 0.00208369,
+      "p_value": 0.0622,
+      "null_sd": 0.00132387,
+      "z": 1.55398657,
+      "implied_sd_prob": 0.04564744,
+      "corr": 0.02605284
+    },
+    "sElo": {
+      "pairs": 4424,
+      "matches": 23964,
+      "cov": 0.0023081,
+      "p_value": 0.0392,
+      "null_sd": 0.00129237,
+      "z": 1.77698126,
+      "implied_sd_prob": 0.04804272,
+      "corr": 0.02921533
+    },
+    "sElo_min8": {
+      "pairs": 487,
+      "matches": 4978,
+      "cov": 0.00400757,
+      "p_value": 0.0232,
+      "null_sd": 0.00199852,
+      "z": 1.99990513,
+      "implied_sd_prob": 0.06330537,
+      "corr": 0.09844482
+    }
+  },
+  "cycles": {
+    "n_triads": 44585,
+    "n_cycles": 96,
+    "share": 0.00215319,
+    "top": [
+      {
+        "x": "Goran Ivanisevic",
+        "y": "Greg Rusedski",
+        "z": "Karol Kucera",
+        "p_xy": 0.52410364,
+        "p_yz": 0.53463814,
+        "p_zx": 0.5303081,
+        "strength": 0.52410364
+      },
+      {
+        "x": "Goran Ivanisevic",
+        "y": "Greg Rusedski",
+        "z": "Wayne Ferreira",
+        "p_xy": 0.52410364,
+        "p_yz": 0.54754958,
+        "p_zx": 0.52364962,
+        "strength": 0.52364962
+      },
+      {
+        "x": "Andrei Chesnokov",
+        "y": "Bernd Karbacher",
+        "z": "Michael Chang",
+        "p_xy": 0.54460151,
+        "p_yz": 0.52233515,
+        "p_zx": 0.52890886,
+        "strength": 0.52233515
+      },
+      {
+        "x": "Jason Stoltenberg",
+        "y": "Goran Ivanisevic",
+        "z": "Greg Rusedski",
+        "p_xy": 0.51641651,
+        "p_yz": 0.52410364,
+        "p_zx": 0.52232117,
+        "strength": 0.51641651
+      },
+      {
+        "x": "Xavier Malisse",
+        "y": "Yen Hsun Lu",
+        "z": "Lleyton Hewitt",
+        "p_xy": 0.52009972,
+        "p_yz": 0.51643952,
+        "p_zx": 0.51629871,
+        "strength": 0.51629871
+      },
+      {
+        "x": "Slava Dosedel",
+        "y": "Dominik Hrbaty",
+        "z": "Bohdan Ulihrach",
+        "p_xy": 0.51570309,
+        "p_yz": 0.51579928,
+        "p_zx": 0.51868558,
+        "strength": 0.51570309
+      },
+      {
+        "x": "Daniel Vacek",
+        "y": "David Prinosil",
+        "z": "Martin Damm Sr",
+        "p_xy": 0.52114608,
+        "p_yz": 0.54956191,
+        "p_zx": 0.51339855,
+        "strength": 0.51339855
+      },
+      {
+        "x": "Petr Korda",
+        "y": "Goran Ivanisevic",
+        "z": "Greg Rusedski",
+        "p_xy": 0.54068304,
+        "p_yz": 0.52410364,
+        "p_zx": 0.50894372,
+        "strength": 0.50894372
+      },
+      {
+        "x": "Ivan Ljubicic",
+        "y": "Fernando Verdasco",
+        "z": "Andreas Seppi",
+        "p_xy": 0.51701483,
+        "p_yz": 0.50859199,
+        "p_zx": 0.51195918,
+        "strength": 0.50859199
+      },
+      {
+        "x": "Nicolas Lapentti",
+        "y": "Agustin Calleri",
+        "z": "Mariano Zabaleta",
+        "p_xy": 0.5085719,
+        "p_yz": 0.52023735,
+        "p_zx": 0.51698059,
+        "strength": 0.5085719
+      }
+    ]
+  },
+  "largest_pairwise": [
+    {
+      "favoured": "David Nalbandian",
+      "over": "Roger Federer",
+      "meetings": 15,
+      "beta": 57.13744661
+    },
+    {
+      "favoured": "Novak Djokovic",
+      "over": "Rafael Nadal",
+      "meetings": 51,
+      "beta": 41.0925997
+    },
+    {
+      "favoured": "Rafael Nadal",
+      "over": "Roger Federer",
+      "meetings": 38,
+      "beta": 35.14915004
+    },
+    {
+      "favoured": "Roger Federer",
+      "over": "Andy Roddick",
+      "meetings": 17,
+      "beta": 32.79634309
+    },
+    {
+      "favoured": "Novak Djokovic",
+      "over": "Roger Federer",
+      "meetings": 47,
+      "beta": 32.51646288
+    },
+    {
+      "favoured": "Rafael Nadal",
+      "over": "Richard Gasquet",
+      "meetings": 15,
+      "beta": 27.58428362
+    },
+    {
+      "favoured": "Daniil Medvedev",
+      "over": "Alexander Zverev",
+      "meetings": 18,
+      "beta": 24.95980085
+    },
+    {
+      "favoured": "Pete Sampras",
+      "over": "Andre Agassi",
+      "meetings": 24,
+      "beta": 24.29184744
+    },
+    {
+      "favoured": "Feliciano Lopez",
+      "over": "David Ferrer",
+      "meetings": 16,
+      "beta": 23.85719443
+    },
+    {
+      "favoured": "Andy Murray",
+      "over": "Gilles Simon",
+      "meetings": 15,
+      "beta": 21.00258254
+    },
+    {
+      "favoured": "Andy Murray",
+      "over": "Roger Federer",
+      "meetings": 23,
+      "beta": 20.05671744
+    },
+    {
+      "favoured": "Roger Federer",
+      "over": "Stan Wawrinka",
+      "meetings": 19,
+      "beta": 19.53794006
+    }
+  ],
+  "market": {
+    "n": 2319,
+    "market": [2319, 0.49246618, 0.16295084, 0.76110392, 0.84038123],
+    "models": {
+      "Elo": [2319, 0.54009536, 0.18234748, 0.72574386, 0.80203265],
+      "PELO": [2319, 0.54020491, 0.1823703, 0.72401897, 0.80191451],
+      "sElo": [2319, 0.53242624, 0.17900016, 0.73393704, 0.80970461],
+      "sPELO": [2319, 0.53248079, 0.1790139, 0.73436826, 0.80953339]
+    }
+  },
+  "betting": {
+    "Elo": {
+      "n_bets": 2098,
+      "roi": [-0.14896568, -0.21714502, -0.07539252],
+      "avg_margin": 0.02397477
+    },
+    "PELO": {
+      "n_bets": 2099,
+      "roi": [-0.1435636, -0.2096085, -0.07250036],
+      "avg_margin": 0.02397477
+    },
+    "sElo": {
+      "n_bets": 2095,
+      "roi": [-0.12425776, -0.1956222, -0.05585823],
+      "avg_margin": 0.02397477
+    },
+    "sPELO": {
+      "n_bets": 2080,
+      "roi": [-0.13698558, -0.20810757, -0.06378425],
+      "avg_margin": 0.02397477
+    }
+  }
+}
