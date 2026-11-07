@@ -18,8 +18,9 @@ optimize_pelo_kk2(
 the PElo model. This object is passed directly to
 \code{get_negloglike_pelo}.}
 
-\item{initial_ratings}{A named numeric vector of initial PElo ratings
-for all competitors.}
+\item{initial_ratings}{A data frame with columns \code{Player} and
+\code{Ratings} holding the initial PElo ratings of all competitors (e.g. from
+\code{initialize_ratings}). Rows are matched to players by name.}
 
 \item{initial_pair_adv_mat}{A numeric matrix representing the initial
 pairwise advantage parameters.}

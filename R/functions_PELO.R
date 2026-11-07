@@ -231,6 +231,28 @@ pairadv_update_pelo <- function(p1_r, p2_r, p1_adv_p2, p2_adv_p1, K2, X){
   c(p1_adv_p2_new, p2_adv_p1_new)
 }
 
+#' Rows of the ratings table for a vector of player names (internal)
+#'
+#' Matches players to `current_ratings$Player` by name, so the table may list
+#' players in any order and may include players who are not in the data.
+#' Stops with an informative error if a player is missing from the table.
+#'
+#' @param current_ratings Data frame with columns `Player` and `Ratings`.
+#' @param players Vector of player names (character or numeric IDs).
+#' @return Integer vector of row indices into `current_ratings`.
+#' @keywords internal
+#' @noRd
+.rating_index <- function(current_ratings, players) {
+  idx <- match(as.character(players), as.character(current_ratings$Player))
+  if (anyNA(idx)) {
+    missing <- unique(as.character(players)[is.na(idx)])
+    stop("Player(s) not found in current_ratings$Player: ",
+         paste(utils::head(missing, 5), collapse = ", "),
+         if (length(missing) > 5) paste0(" and ", length(missing) - 5, " more") else "")
+  }
+  idx
+}
+
 #' Linear indices of pairwise-advantage entries (internal)
 #'
 #' For every match, returns the linear indices of `pair_adv_mat[A, B]` and
@@ -265,7 +287,10 @@ pairadv_update_pelo <- function(p1_r, p2_r, p1_adv_p2, p2_adv_p1, K2, X){
 #' @param data A dataframe of match results with columns: `Time`, `A`, `B`, `match_result`.
 #'             `match_result` must be binary: 1 if player A won, 0 if player B won.
 #' @param current_ratings A dataframe with columns `Player` and `Ratings` containing
-#'                        the current ratings of all players.
+#'                        the current ratings of all players. Rows are matched to
+#'                        players by `Player`, so they can be in any order and may
+#'                        include players who are not in `data`; every player in
+#'                        `data` must be listed.
 #'
 #' @return Numeric, the negative log-likelihood of the match outcomes given the current ratings
 #'         and the K-factor.
@@ -294,11 +319,9 @@ get_negloglike_elo <- cmpfun(function(K_guess, data, current_ratings){
     stop("The column 'match_result' must contain only 0 (= first player lost) or 1 (= first player won) values.")
   }
 
-  # Map each match's players to integer indices (players sorted alphabetically,
-  # matching the row order of initialize_ratings(sort(players), ...))
-  players <- sort(unique(c(df$A, df$B)))
-  p1_inds <- match(df$A, players)
-  p2_inds <- match(df$B, players)
+  # Map each match's players to their rows in current_ratings, by name
+  p1_inds <- .rating_index(current_ratings, df$A)
+  p2_inds <- .rating_index(current_ratings, df$B)
 
   # Work on plain numeric vectors inside the loop (no data.frame access per game)
   r <- current_ratings$Ratings
@@ -341,7 +364,10 @@ get_negloglike_elo <- cmpfun(function(K_guess, data, current_ratings){
 #' @param data A dataframe of match results with columns: `Time`, `A`, `B`, `match_result`.
 #'             `match_result` must be binary: 1 if player A won, 0 if player B won.
 #' @param current_ratings A dataframe with columns `Player` and `Ratings` containing
-#'                        the current ratings of all players.
+#'                        the current ratings of all players. Rows are matched to
+#'                        players by `Player`, so they can be in any order and may
+#'                        include players who are not in `data`; every player in
+#'                        `data` must be listed.
 #' @param current_pair_adv_mat Numeric matrix of pairwise advantages between players.
 #'                             Must be square with row and column names equal to player names.
 #'
@@ -377,11 +403,9 @@ get_negloglike_pelo <- cmpfun(function(KK2_guess, data, current_ratings, current
     stop("The column 'match_result' must contain only 0 (= first player lost) or 1 (= first player won) values.")
   }
 
-  # Map each match's players to integer indices (players sorted alphabetically,
-  # matching the row order of initialize_ratings(sort(players), ...))
-  players <- sort(unique(c(df$A, df$B)))
-  p1_inds <- match(df$A, players)
-  p2_inds <- match(df$B, players)
+  # Map each match's players to their rows in current_ratings, by name
+  p1_inds <- .rating_index(current_ratings, df$A)
+  p2_inds <- .rating_index(current_ratings, df$B)
 
   # Pairwise advantage matrix: precompute linear indices of A[p1, p2] and A[p2, p1]
   pair_adv_mat <- current_pair_adv_mat
@@ -894,8 +918,9 @@ hypo_bet_scheme_value <- cmpfun(function(bookmaker_preds, bettor_preds, actual_o
 #' @param data A data frame containing match results used for training
 #'   the Elo model. This object is passed directly to
 #'   \code{get_negloglike_elo}.
-#' @param initial_ratings A named numeric vector of initial Elo ratings
-#'   for all competitors.
+#' @param initial_ratings A data frame with columns \code{Player} and
+#'   \code{Ratings} holding the initial Elo ratings of all competitors (e.g. from
+#'   \code{initialize_ratings}). Rows are matched to players by name.
 #' @param k_init Numeric scalar specifying the initial value of the
 #'   K-factor for optimization. Default is 30.
 #' @param lower Numeric scalar specifying the lower bound for the
@@ -948,8 +973,9 @@ optimize_elo_k <- function(
 #' @param data A data frame containing match results used for training
 #'   the PElo model. This object is passed directly to
 #'   \code{get_negloglike_pelo}.
-#' @param initial_ratings A named numeric vector of initial PElo ratings
-#'   for all competitors.
+#' @param initial_ratings A data frame with columns \code{Player} and
+#'   \code{Ratings} holding the initial PElo ratings of all competitors (e.g. from
+#'   \code{initialize_ratings}). Rows are matched to players by name.
 #' @param initial_pair_adv_mat A numeric matrix representing the initial
 #'   pairwise advantage parameters.
 #' @param kk2_init Numeric vector of length two specifying the initial

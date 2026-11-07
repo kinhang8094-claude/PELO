@@ -13,7 +13,10 @@ get_negloglike_pelo(KK2_guess, data, current_ratings, current_pair_adv_mat)
 \code{match_result} must be binary: 1 if player A won, 0 if player B won.}
 
 \item{current_ratings}{A dataframe with columns \code{Player} and \code{Ratings} containing
-the current ratings of all players.}
+the current ratings of all players. Rows are matched to
+players by \code{Player}, so they can be in any order and may
+include players who are not in \code{data}; every player in
+\code{data} must be listed.}
 
 \item{current_pair_adv_mat}{Numeric matrix of pairwise advantages between players.
 Must be square with row and column names equal to player names.}

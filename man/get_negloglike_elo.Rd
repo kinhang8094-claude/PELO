@@ -13,7 +13,10 @@ get_negloglike_elo(K_guess, data, current_ratings)
 \code{match_result} must be binary: 1 if player A won, 0 if player B won.}
 
 \item{current_ratings}{A dataframe with columns \code{Player} and \code{Ratings} containing
-the current ratings of all players.}
+the current ratings of all players. Rows are matched to
+players by \code{Player}, so they can be in any order and may
+include players who are not in \code{data}; every player in
+\code{data} must be listed.}
 }
 \value{
 Numeric, the negative log-likelihood of the match outcomes given the current ratings

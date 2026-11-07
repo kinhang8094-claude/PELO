@@ -11,8 +11,9 @@ optimize_elo_k(data, initial_ratings, k_init = 30, lower = -500, upper = 500)
 the Elo model. This object is passed directly to
 \code{get_negloglike_elo}.}
 
-\item{initial_ratings}{A named numeric vector of initial Elo ratings
-for all competitors.}
+\item{initial_ratings}{A data frame with columns \code{Player} and
+\code{Ratings} holding the initial Elo ratings of all competitors (e.g. from
+\code{initialize_ratings}). Rows are matched to players by name.}
 
 \item{k_init}{Numeric scalar specifying the initial value of the
 K-factor for optimization. Default is 30.}
