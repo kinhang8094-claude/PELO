@@ -8,10 +8,11 @@ run_pelo(
   KK2,
   data,
   current_ratings,
-  current_pair_adv_mat,
+  current_pair_adv_mat = NULL,
   player_id_mapping,
   new_player_initial_rating = 1500,
-  keep_history = FALSE
+  keep_history = FALSE,
+  pair_adv_format = c("pairs", "matrix")
 )
 }
 \arguments{
@@ -23,8 +24,12 @@ run_pelo(
 \item{current_ratings}{Dataframe with columns \code{Player} and \code{Ratings} containing the
 current ratings of all players.}
 
-\item{current_pair_adv_mat}{Numeric square matrix of pairwise advantages between players,
-with row and column names corresponding to player names.}
+\item{current_pair_adv_mat}{Pairwise advantages at the start: a pair table
+(data frame with columns \code{Player1}, \code{Player2}, \code{PairAdv}, where \code{PairAdv} is
+Player1's advantage over Player2; pairs not listed start at 0), \code{NULL} for
+all zero (default), or a square matrix with player names as row and column
+names (e.g. from \code{initialize_pair_adv_mat()}). Internally only pairs that
+occur are stored, so memory doesn't grow with the square of the number of players.}
 
 \item{player_id_mapping}{Dataframe with columns \code{Names} and \code{ID} mapping player names to unique IDs.}
 
@@ -32,14 +37,22 @@ with row and column names corresponding to player names.}
 not in the current ratings (default 1500).}
 
 \item{keep_history}{TRUE/FALSE, whether to keep the rating history. Memory issues may arise when the number of players and number of games are large.}
+
+\item{pair_adv_format}{\code{"pairs"} (default) returns pairwise advantages as a compact
+pair table; \code{"matrix"} returns a square players x players matrix instead (memory
+grows with the square of the number of players).}
 }
 \value{
 A list containing:
 \describe{
 \item{ratings}{Dataframe of final ratings after all matches.}
 \item{ratings_hist}{List of ratings after each match.}
-\item{pair_adv}{Final pairwise advantage matrix.}
-\item{pair_adv_hist}{List of pairwise advantage matrices after each match.}
+\item{pair_adv}{Final pairwise advantages: a pair table with columns \code{Player1},
+\code{Player2}, \code{PairAdv} (one row per pair that met or had a starting advantage),
+or a matrix if \code{pair_adv_format = "matrix"}. Can be passed straight back to
+\code{run_pelo()} or \code{get_negloglike_pelo()}.}
+\item{pair_adv_hist}{List of pairwise advantages after each match, in the same
+format as \code{pair_adv} (only filled when \code{keep_history = TRUE}).}
 \item{K}{Numeric, Elo K-factor used for ratings updates.}
 \item{K2}{Numeric, P-Elo K2-factor used for pairwise advantage updates.}
 \item{type}{Character, always "PELO".}
@@ -62,6 +75,6 @@ computed based on the PELO formula.
 \examples{
 # Suppose df contains match data, ratings contains current ratings,
 # pair_adv_mat contains pairwise advantages, and player_id_mapping exists
-# run_pelo(c(32,16), df, ratings, pair_adv_mat, player_id_mapping)
+# run_pelo(c(32,16), df, ratings, NULL, player_id_mapping)   # pairwise advantages start at 0
 
 }

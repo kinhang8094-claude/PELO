@@ -11,7 +11,8 @@ historical_win_prob(ratings_history_obj, pair_adv_mat_history_obj = NULL)
 two columns: the first column contains player names and
 the second column contains their ratings at a given time point.}
 
-\item{pair_adv_mat_history_obj}{Optional. A list of matrices of pairwise advantages,
+\item{pair_adv_mat_history_obj}{Optional. A list of pairwise advantages (pair tables
+or matrices, e.g. \code{run_pelo(...)$pair_adv_hist}),
 corresponding to each time point in \code{ratings_history_obj}.
 If \code{NULL}, pairwise advantage is assumed zero.}
 }

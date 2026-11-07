@@ -7,7 +7,7 @@
 optimize_pelo_kk2(
   data,
   initial_ratings,
-  initial_pair_adv_mat,
+  initial_pair_adv_mat = NULL,
   kk2_init = c(30, 30),
   lower = c(-500, -500),
   upper = c(500, 500)
@@ -22,8 +22,12 @@ the PElo model. This object is passed directly to
 \code{Ratings} holding the initial PElo ratings of all competitors (e.g. from
 \code{initialize_ratings}). Rows are matched to players by name.}
 
-\item{initial_pair_adv_mat}{A numeric matrix representing the initial
-pairwise advantage parameters.}
+\item{initial_pair_adv_mat}{Pairwise advantages at the start: a pair table
+(data frame with columns \code{Player1}, \code{Player2}, \code{PairAdv}, where \code{PairAdv} is
+Player1's advantage over Player2; pairs not listed start at 0), \code{NULL} for
+all zero (default), or a square matrix with player names as row and column
+names (e.g. from \code{initialize_pair_adv_mat()}). Internally only pairs that
+occur are stored, so memory doesn't grow with the square of the number of players.}
 
 \item{kk2_init}{Numeric vector of length two specifying the initial
 values of the PElo K-factors. Default is \code{c(30, 30)}.}

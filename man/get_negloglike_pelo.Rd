@@ -4,7 +4,12 @@
 \alias{get_negloglike_pelo}
 \title{Negative Log-Likelihood for PELO Ratings}
 \usage{
-get_negloglike_pelo(KK2_guess, data, current_ratings, current_pair_adv_mat)
+get_negloglike_pelo(
+  KK2_guess,
+  data,
+  current_ratings,
+  current_pair_adv_mat = NULL
+)
 }
 \arguments{
 \item{KK2_guess}{Numeric vector of length 2: \code{1} = Elo K, \code{2} = P-Elo K2}
@@ -18,8 +23,12 @@ players by \code{Player}, so they can be in any order and may
 include players who are not in \code{data}; every player in
 \code{data} must be listed.}
 
-\item{current_pair_adv_mat}{Numeric matrix of pairwise advantages between players.
-Must be square with row and column names equal to player names.}
+\item{current_pair_adv_mat}{Pairwise advantages at the start: a pair table
+(data frame with columns \code{Player1}, \code{Player2}, \code{PairAdv}, where \code{PairAdv} is
+Player1's advantage over Player2; pairs not listed start at 0), \code{NULL} for
+all zero (default), or a square matrix with player names as row and column
+names (e.g. from \code{initialize_pair_adv_mat()}). Internally only pairs that
+occur are stored, so memory doesn't grow with the square of the number of players.}
 }
 \value{
 Numeric, the negative log-likelihood of the match outcomes given the current ratings,

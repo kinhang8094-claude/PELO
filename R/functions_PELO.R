@@ -231,6 +231,74 @@ pairadv_update_pelo <- function(p1_r, p2_r, p1_adv_p2, p2_adv_p1, K2, X){
   c(p1_adv_p2_new, p2_adv_p1_new)
 }
 
+#' Convert pairwise advantages to a compact pair table
+#'
+#' PELO stores pairwise advantages as a table with one row per pair of players,
+#' which needs memory only for pairs that actually have an advantage, instead of
+#' a full players x players matrix.
+#'
+#' @param x A square matrix of pairwise advantages with player names as row and
+#'   column names (e.g. from `initialize_pair_adv_mat()`), a pair table, or `NULL`.
+#' @param drop_zero Logical; if `TRUE` (default), pairs with zero advantage are
+#'   left out (a missing pair means an advantage of 0).
+#'
+#' @return A data frame with columns `Player1`, `Player2` and `PairAdv`, where
+#'   `PairAdv` is Player1's advantage over Player2. Each pair appears once, with
+#'   `Player1` the player that sorts first.
+#'
+#' @examples
+#' m <- initialize_pair_adv_mat(c("Alice", "Bob", "Cara"), 0)
+#' m["Alice", "Bob"] <- 12; m["Bob", "Alice"] <- -12
+#' as_pair_adv_table(m)
+#'
+#' @export
+as_pair_adv_table <- function(x, drop_zero = TRUE) {
+  if (is.null(x)) return(.pairs_to_table(character(0), character(0), numeric(0)))
+  if (is.matrix(x)) {
+    rn <- as.character(rownames(x)); cn <- as.character(colnames(x))
+    nz <- which(x != 0 | !drop_zero, arr.ind = TRUE)
+    n1 <- rn[nz[, 1]]; n2 <- cn[nz[, 2]]
+    keep <- n1 < n2
+    out <- .pairs_to_table(n1[keep], n2[keep], x[nz[keep, , drop = FALSE]])
+  } else if (is.data.frame(x)) {
+    ps <- .pair_setup(x, character(0), character(0))
+    out <- .pairs_to_table(ps$plo, ps$phi, ps$beta)
+    if (drop_zero) out <- out[out$PairAdv != 0, , drop = FALSE]
+  } else stop("x must be a matrix, a pair table, or NULL.")
+  out <- out[order(out$Player1, out$Player2), , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
+#' Convert a pair table of pairwise advantages to a square matrix
+#'
+#' Use this only when a full players x players matrix is really wanted, for
+#' example for display. Memory grows with the square of the number of players.
+#'
+#' @param x A pair table with columns `Player1`, `Player2`, `PairAdv` (as returned
+#'   by `run_pelo()` or `as_pair_adv_table()`), a matrix, or `NULL`.
+#' @param players Character vector of players for the rows and columns. Defaults
+#'   to every player in `x`, sorted.
+#'
+#' @return A square numeric matrix with `players` as row and column names; entry
+#'   `[i, j]` is player i's advantage over player j (0 for pairs not in `x`).
+#'
+#' @examples
+#' tab <- data.frame(Player1 = "Alice", Player2 = "Bob", PairAdv = 12)
+#' as_pair_adv_matrix(tab, players = c("Alice", "Bob", "Cara"))
+#'
+#' @export
+as_pair_adv_matrix <- function(x, players = NULL) {
+  tab <- as_pair_adv_table(x, drop_zero = FALSE)
+  if (is.null(players)) players <- sort(unique(c(tab$Player1, tab$Player2)))
+  players <- as.character(players)
+  if (!all(c(tab$Player1, tab$Player2) %in% players)) {
+    stop("Every player in x must be listed in `players`.")
+  }
+  M <- matrix(0, length(players), length(players), dimnames = list(players, players))
+  .pairs_into_matrix(M, tab$Player1, tab$Player2, tab$PairAdv)
+}
+
 #' Rows of the ratings table for a vector of player names (internal)
 #'
 #' Matches players to `current_ratings$Player` by name, so the table may list
@@ -253,29 +321,97 @@ pairadv_update_pelo <- function(p1_r, p2_r, p1_adv_p2, p2_adv_p1, K2, X){
   idx
 }
 
-#' Linear indices of pairwise-advantage entries (internal)
+#' Pairwise advantages as one value per pair of players (internal)
 #'
-#' For every match, returns the linear indices of `pair_adv_mat[A, B]` and
-#' `pair_adv_mat[B, A]`, so the match loops can read and write the matrix
-#' without name lookups. Also performs, on the starting values, the same
-#' antisymmetry check as `pairadv_update_pelo()`.
+#' The match loops store pairwise advantages as a plain vector with one entry
+#' per unordered pair of players that can occur, instead of a full
+#' players x players matrix. For the pair (lo, hi), with lo <= hi in sort order,
+#' `beta` holds lo's advantage over hi; hi's advantage over lo is `-beta`.
 #'
-#' @param pair_adv_mat Numeric matrix with player names as row and column names.
-#' @param A,B Character vectors of player names (first and second player of each match).
-#' @return List with integer vectors `ab` and `ba`.
+#' Accepted inputs for the starting pairwise advantages:
+#' * a square matrix with player names as row and column names (as returned
+#'   by `initialize_pair_adv_mat()` or by `run_pelo()` in matrix format);
+#' * a data frame with columns `Player1`, `Player2`, `PairAdv`, where `PairAdv`
+#'   is Player1's advantage over Player2 (pairs not listed start at 0);
+#' * `NULL`: every pairwise advantage starts at 0.
+#'
+#' @param pair_adv Matrix, pair table or NULL (see above).
+#' @param A,B Players of each match (character or numeric IDs).
+#' @return List with `pid` (pair index of each match), `sgn` (+1 if A is the
+#'   pair's first player, -1 if second, 0 if A == B), `beta` (starting
+#'   advantages), `plo`, `phi` (the pairs' players, as character).
 #' @keywords internal
 #' @noRd
-.pair_adv_lin_index <- function(pair_adv_mat, A, B) {
-  ra <- match(A, rownames(pair_adv_mat)); rb <- match(B, rownames(pair_adv_mat))
-  ca <- match(A, colnames(pair_adv_mat)); cb <- match(B, colnames(pair_adv_mat))
-  if (anyNA(ra) || anyNA(rb) || anyNA(ca) || anyNA(cb)) stop("subscript out of bounds")
-  nr <- nrow(pair_adv_mat)
-  ab <- ra + (cb - 1L) * nr
-  ba <- rb + (ca - 1L) * nr
-  if (any(pair_adv_mat[ab] + pair_adv_mat[ba] != 0)) {
-    stop("p1_adv_p2 is not negative p2_adv_p1.")
+.pair_setup <- function(pair_adv, A, B) {
+  a <- as.character(A); b <- as.character(B)
+  lo <- pmin(a, b); hi <- pmax(a, b)
+  sgn <- ifelse(a == lo, 1, -1); sgn[a == b] <- 0
+  key <- paste(lo, hi, sep = "\r")
+
+  if (is.null(pair_adv)) {
+    ukey <- unique(key)
+    pos <- match(ukey, key)
+    plo <- lo[pos]; phi <- hi[pos]
+    beta <- numeric(length(ukey))
+  } else if (is.matrix(pair_adv)) {
+    rn <- as.character(rownames(pair_adv)); cn <- as.character(colnames(pair_adv))
+    if (anyNA(match(c(a, b), rn)) || anyNA(match(c(a, b), cn))) stop("subscript out of bounds")
+    dkey <- unique(key)
+    pos <- match(dkey, key)
+    dlo <- lo[pos]; dhi <- hi[pos]
+    v_lh <- pair_adv[cbind(match(dlo, rn), match(dhi, cn))]
+    v_hl <- pair_adv[cbind(match(dhi, rn), match(dlo, cn))]
+    if (any(v_lh + v_hl != 0)) stop("p1_adv_p2 is not negative p2_adv_p1.")
+    # Carry along non-zero advantages of pairs that don't meet in this data
+    nz <- which(pair_adv != 0, arr.ind = TRUE)
+    nz <- nz[rn[nz[, 1]] != cn[nz[, 2]], , drop = FALSE]
+    n1 <- rn[nz[, 1]]; n2 <- cn[nz[, 2]]
+    keep <- n1 < n2
+    ckey <- paste(n1[keep], n2[keep], sep = "\r")
+    extra <- !(ckey %in% dkey)
+    ukey <- c(dkey, ckey[extra])
+    plo <- c(dlo, n1[keep][extra]); phi <- c(dhi, n2[keep][extra])
+    beta <- c(v_lh, pair_adv[nz[keep, , drop = FALSE]][extra])
+  } else if (is.data.frame(pair_adv)) {
+    if (!all(c("Player1", "Player2", "PairAdv") %in% names(pair_adv))) {
+      stop("A pairwise advantage table needs columns 'Player1', 'Player2' and 'PairAdv'.")
+    }
+    t1 <- as.character(pair_adv$Player1); t2 <- as.character(pair_adv$Player2)
+    tl <- pmin(t1, t2); th <- pmax(t1, t2)
+    tv <- ifelse(t1 == tl, pair_adv$PairAdv, -pair_adv$PairAdv)
+    if (any(t1 == t2 & pair_adv$PairAdv != 0)) stop("p1_adv_p2 is not negative p2_adv_p1.")
+    tkey <- paste(tl, th, sep = "\r")
+    dup <- duplicated(tkey) | duplicated(tkey, fromLast = TRUE)
+    if (any(dup)) {
+      chk <- tapply(tv[dup], tkey[dup], function(v) all(v == v[1]))
+      if (!all(chk)) stop("p1_adv_p2 is not negative p2_adv_p1.")
+    }
+    keep <- !duplicated(tkey)
+    tkey <- tkey[keep]; tl <- tl[keep]; th <- th[keep]; tv <- tv[keep]
+    new <- setdiff(unique(key), tkey)                  # pairs in the data but not in the table
+    pos <- match(new, key)
+    ukey <- c(tkey, new); plo <- c(tl, lo[pos]); phi <- c(th, hi[pos])
+    beta <- c(tv, numeric(length(new)))
+  } else {
+    stop("Pairwise advantages must be a matrix, a data frame with columns ",
+         "'Player1', 'Player2', 'PairAdv', or NULL.")
   }
-  list(ab = ab, ba = ba)
+  list(pid = match(key, ukey), sgn = sgn, beta = beta, plo = plo, phi = phi)
+}
+
+#' Pairwise advantages as a table (internal)
+#' @noRd
+.pairs_to_table <- function(plo, phi, beta) {
+  data.frame(Player1 = plo, Player2 = phi, PairAdv = beta, stringsAsFactors = FALSE)
+}
+
+#' Write per-pair advantages into a square matrix (internal)
+#' @noRd
+.pairs_into_matrix <- function(M, plo, phi, beta) {
+  rn <- as.character(rownames(M)); cn <- as.character(colnames(M))
+  M[cbind(match(plo, rn), match(phi, cn))] <- beta
+  M[cbind(match(phi, rn), match(plo, cn))] <- -beta
+  M
 }
 
 #' Negative Log-Likelihood for Elo Ratings
@@ -368,8 +504,12 @@ get_negloglike_elo <- cmpfun(function(K_guess, data, current_ratings){
 #'                        players by `Player`, so they can be in any order and may
 #'                        include players who are not in `data`; every player in
 #'                        `data` must be listed.
-#' @param current_pair_adv_mat Numeric matrix of pairwise advantages between players.
-#'                             Must be square with row and column names equal to player names.
+#' @param current_pair_adv_mat Pairwise advantages at the start: a pair table
+#'   (data frame with columns `Player1`, `Player2`, `PairAdv`, where `PairAdv` is
+#'   Player1's advantage over Player2; pairs not listed start at 0), `NULL` for
+#'   all zero (default), or a square matrix with player names as row and column
+#'   names (e.g. from `initialize_pair_adv_mat()`). Internally only pairs that
+#'   occur are stored, so memory doesn't grow with the square of the number of players.
 #'
 #' @return Numeric, the negative log-likelihood of the match outcomes given the current ratings,
 #'         pairwise advantage matrix, and K-factors.
@@ -386,7 +526,7 @@ get_negloglike_elo <- cmpfun(function(K_guess, data, current_ratings){
 #' # get_negloglike_pelo(c(32,16), df, ratings, pair_adv_mat)
 #'
 #' @export
-get_negloglike_pelo <- cmpfun(function(KK2_guess, data, current_ratings, current_pair_adv_mat){
+get_negloglike_pelo <- cmpfun(function(KK2_guess, data, current_ratings, current_pair_adv_mat = NULL){
 
   K_guess <- KK2_guess[1]   # Elo K-factor for ratings update
   K2_guess <- KK2_guess[2]  # P-Elo K2-factor for pairwise advantage update
@@ -407,9 +547,9 @@ get_negloglike_pelo <- cmpfun(function(KK2_guess, data, current_ratings, current
   p1_inds <- .rating_index(current_ratings, df$A)
   p2_inds <- .rating_index(current_ratings, df$B)
 
-  # Pairwise advantage matrix: precompute linear indices of A[p1, p2] and A[p2, p1]
-  pair_adv_mat <- current_pair_adv_mat
-  idx <- .pair_adv_lin_index(pair_adv_mat, df$A, df$B)
+  # Pairwise advantages: one value per pair of players that meet (see .pair_setup)
+  ps <- .pair_setup(current_pair_adv_mat, df$A, df$B)
+  beta <- ps$beta; pid <- ps$pid; sgn <- ps$sgn
 
   r <- current_ratings$Ratings
   X <- df$match_result
@@ -420,11 +560,11 @@ get_negloglike_pelo <- cmpfun(function(KK2_guess, data, current_ratings, current
   for (g in seq_len(n)) {
     i <- p1_inds[g]
     j <- p2_inds[g]
-    ab <- idx$ab[g]
-    ba <- idx$ba[g]
+    k <- pid[g]
+    s <- sgn[g]
 
     # Predicted probability that player A wins (same formula as winning_prob_pelo)
-    p <- 1 / (1 + 10^(-(r[i] + pair_adv_mat[ab] - r[j]) / 400))
+    p <- 1 / (1 + 10^(-(r[i] + s * beta[k] - r[j]) / 400))
 
     # Probability of the observed outcome
     outcome_prob[g] <- if (X[g] == 1) p else 1 - p
@@ -434,10 +574,10 @@ get_negloglike_pelo <- cmpfun(function(KK2_guess, data, current_ratings, current
     r[i] <- r[i] + upd
     r[j] <- r[j] - upd
 
-    # Pairwise advantage update (same as pairadv_update_pelo)
+    # Pairwise advantage update (same as pairadv_update_pelo): A's advantage
+    # over B rises by upd2, so B's advantage over A falls by upd2
     upd2 <- K2_guess * (X[g] - p)
-    pair_adv_mat[ab] <- pair_adv_mat[ab] + upd2
-    pair_adv_mat[ba] <- pair_adv_mat[ba] - upd2
+    beta[k] <- beta[k] + s * upd2
   }
 
   # Prevent log(0) by imposing a minimum probability
@@ -584,19 +724,30 @@ run_elo <- cmpfun(function(K, data, current_ratings, player_id_mapping, new_play
 #'             `match_result` must be binary: 1 if player A won, 0 if player B won.
 #' @param current_ratings Dataframe with columns `Player` and `Ratings` containing the
 #'                        current ratings of all players.
-#' @param current_pair_adv_mat Numeric square matrix of pairwise advantages between players,
-#'                             with row and column names corresponding to player names.
+#' @param current_pair_adv_mat Pairwise advantages at the start: a pair table
+#'   (data frame with columns `Player1`, `Player2`, `PairAdv`, where `PairAdv` is
+#'   Player1's advantage over Player2; pairs not listed start at 0), `NULL` for
+#'   all zero (default), or a square matrix with player names as row and column
+#'   names (e.g. from `initialize_pair_adv_mat()`). Internally only pairs that
+#'   occur are stored, so memory doesn't grow with the square of the number of players.
 #' @param player_id_mapping Dataframe with columns `Names` and `ID` mapping player names to unique IDs.
 #' @param new_player_initial_rating Numeric, the initial rating assigned to any new players
 #'                                  not in the current ratings (default 1500).
 #' @param keep_history TRUE/FALSE, whether to keep the rating history. Memory issues may arise when the number of players and number of games are large.
+#' @param pair_adv_format `"pairs"` (default) returns pairwise advantages as a compact
+#'   pair table; `"matrix"` returns a square players x players matrix instead (memory
+#'   grows with the square of the number of players).
 #'
 #' @return A list containing:
 #' \describe{
 #'   \item{ratings}{Dataframe of final ratings after all matches.}
 #'   \item{ratings_hist}{List of ratings after each match.}
-#'   \item{pair_adv}{Final pairwise advantage matrix.}
-#'   \item{pair_adv_hist}{List of pairwise advantage matrices after each match.}
+#'   \item{pair_adv}{Final pairwise advantages: a pair table with columns `Player1`,
+#'     `Player2`, `PairAdv` (one row per pair that met or had a starting advantage),
+#'     or a matrix if `pair_adv_format = "matrix"`. Can be passed straight back to
+#'     `run_pelo()` or `get_negloglike_pelo()`.}
+#'   \item{pair_adv_hist}{List of pairwise advantages after each match, in the same
+#'     format as `pair_adv` (only filled when `keep_history = TRUE`).}
 #'   \item{K}{Numeric, Elo K-factor used for ratings updates.}
 #'   \item{K2}{Numeric, P-Elo K2-factor used for pairwise advantage updates.}
 #'   \item{type}{Character, always "PELO".}
@@ -614,10 +765,10 @@ run_elo <- cmpfun(function(K, data, current_ratings, player_id_mapping, new_play
 #' @examples
 #' # Suppose df contains match data, ratings contains current ratings,
 #' # pair_adv_mat contains pairwise advantages, and player_id_mapping exists
-#' # run_pelo(c(32,16), df, ratings, pair_adv_mat, player_id_mapping)
+#' # run_pelo(c(32,16), df, ratings, NULL, player_id_mapping)   # pairwise advantages start at 0
 #'
 #' @export
-run_pelo <- cmpfun(function(KK2, data, current_ratings, current_pair_adv_mat, player_id_mapping, new_player_initial_rating = 1500, keep_history = FALSE) {
+run_pelo <- cmpfun(function(KK2, data, current_ratings, current_pair_adv_mat = NULL, player_id_mapping, new_player_initial_rating = 1500, keep_history = FALSE, pair_adv_format = c("pairs", "matrix")) {
 
   K_guess <- KK2[1]    # Elo K-factor for ratings update
   K2_guess <- KK2[2]   # P-Elo K2-factor for pairwise advantage update
@@ -633,6 +784,10 @@ run_pelo <- cmpfun(function(KK2, data, current_ratings, current_pair_adv_mat, pl
     stop("The column 'match_result' must contain only 0 (= first player lost) or 1 (= first player won) values.")
   }
 
+  # Output format of the pairwise advantages: a compact pair table unless a matrix is asked for
+  pair_adv_format <- match.arg(pair_adv_format)
+  as_matrix <- pair_adv_format == "matrix"
+
   preds <- numeric(nrow(df))  # vector to store predicted probabilities for each match
 
   # Lists to store ratings and pairwise advantage history after each match
@@ -640,15 +795,10 @@ run_pelo <- cmpfun(function(KK2, data, current_ratings, current_pair_adv_mat, pl
   if(keep_history){
     ratings_hist[[1]] <- current_ratings
   }
-
   pair_adv_hist <- vector("list", nrow(df) + 1)
-  if(keep_history){
-    pair_adv_hist[[1]] <- current_pair_adv_mat
-  }
 
-  # Initialize ratings and pairwise advantage matrix
+  # Initialize ratings
   ratings <- current_ratings
-  pair_adv_mat <- current_pair_adv_mat
 
   # Validate player_id_mapping structure
   if (!all(c("Names", "ID") %in% colnames(player_id_mapping))) {
@@ -674,23 +824,47 @@ run_pelo <- cmpfun(function(KK2, data, current_ratings, current_pair_adv_mat, pl
       ratings,
       data.frame(Player = new_players, Ratings = rep(new_player_initial_rating, length(new_players)))
     )
-
-    # Extend pairwise advantage matrix to include new players
-    old_players <- rownames(pair_adv_mat)
-    all_players <- c(old_players, new_players)
-    new_pair_adv_mat <- matrix(0, nrow = length(all_players), ncol = length(all_players),
-                               dimnames = list(all_players, all_players))
-
-    # Copy existing pairwise advantage values into the new matrix
-    new_pair_adv_mat[old_players, old_players] <- pair_adv_mat
-    pair_adv_mat <- new_pair_adv_mat
   }
 
-  # Integer indices of both players in the ratings table, and linear indices of
-  # A[p1, p2] and A[p2, p1] in the pairwise advantage matrix, for every match
+  # A matrix given as input is extended with any new players (zero advantage),
+  # as before. Without a matrix input, a matrix is only built if one is asked for.
+  pair_adv_mat <- NULL
+  if (is.matrix(current_pair_adv_mat)) {
+    pair_adv_mat <- current_pair_adv_mat
+    if (length(new_players) > 0) {
+      old_players <- rownames(pair_adv_mat)
+      all_players <- c(old_players, new_players)
+      new_pair_adv_mat <- matrix(0, nrow = length(all_players), ncol = length(all_players),
+                                 dimnames = list(all_players, all_players))
+      new_pair_adv_mat[old_players, old_players] <- pair_adv_mat
+      pair_adv_mat <- new_pair_adv_mat
+    }
+  }
+
+  # Pairwise advantages: one value per pair of players (see .pair_setup)
+  ps <- .pair_setup(if (is.matrix(current_pair_adv_mat)) pair_adv_mat else current_pair_adv_mat,
+                    df$A, df$B)
+  if (as_matrix && is.null(pair_adv_mat)) {
+    pl <- unique(c(as.character(ratings$Player), ps$plo, ps$phi))
+    pair_adv_mat <- matrix(0, nrow = length(pl), ncol = length(pl), dimnames = list(pl, pl))
+  }
+  if (!as_matrix) pair_adv_mat <- NULL      # not needed any more; frees the memory
+  beta <- ps$beta; pid <- ps$pid; sgn <- ps$sgn
+  if (as_matrix) pair_adv_mat <- .pairs_into_matrix(pair_adv_mat, ps$plo, ps$phi, beta)
+
+  if(keep_history){
+    pair_adv_hist[[1]] <- if (!as_matrix) .pairs_to_table(ps$plo, ps$phi, beta) else
+      if (is.matrix(current_pair_adv_mat)) current_pair_adv_mat else pair_adv_mat
+    if (as_matrix) {
+      rn <- as.character(rownames(pair_adv_mat)); cn <- as.character(colnames(pair_adv_mat))
+      lh <- match(ps$plo, rn) + (match(ps$phi, cn) - 1L) * nrow(pair_adv_mat)
+      hl <- match(ps$phi, rn) + (match(ps$plo, cn) - 1L) * nrow(pair_adv_mat)
+    }
+  }
+
+  # Integer indices of both players in the ratings table, for every match
   p1_inds <- match(df$A, ratings$Player)
   p2_inds <- match(df$B, ratings$Player)
-  idx <- .pair_adv_lin_index(pair_adv_mat, df$A, df$B)
 
   # Work on a plain numeric vector inside the loop (no data.frame access per game)
   r <- ratings$Ratings
@@ -700,11 +874,11 @@ run_pelo <- cmpfun(function(KK2, data, current_ratings, current_pair_adv_mat, pl
   for (g in seq_along(X)) {
     i <- p1_inds[g]
     j <- p2_inds[g]
-    ab <- idx$ab[g]
-    ba <- idx$ba[g]
+    k <- pid[g]
+    s <- sgn[g]
 
     # Predict probability of player A winning (same formula as winning_prob_pelo)
-    p <- 1 / (1 + 10^(-(r[i] + pair_adv_mat[ab] - r[j]) / 400))
+    p <- 1 / (1 + 10^(-(r[i] + s * beta[k] - r[j]) / 400))
     preds[g] <- p
 
     # Update player ratings (same as ratings_update_pelo)
@@ -716,21 +890,29 @@ run_pelo <- cmpfun(function(KK2, data, current_ratings, current_pair_adv_mat, pl
       ratings_hist[[g + 1]] <- ratings  # save snapshot of ratings
     }
 
-    # Update pairwise advantage matrix (same as pairadv_update_pelo)
+    # Update the pair's advantage (same as pairadv_update_pelo)
     upd2 <- K2_guess * (X[g] - p)
-    pair_adv_mat[ab] <- pair_adv_mat[ab] + upd2
-    pair_adv_mat[ba] <- pair_adv_mat[ba] - upd2
+    beta[k] <- beta[k] + s * upd2
     if(keep_history){
-      pair_adv_hist[[g + 1]] <- pair_adv_mat  # save snapshot of pairwise advantages
+      if (as_matrix) {
+        pair_adv_mat[lh[k]] <- beta[k]
+        pair_adv_mat[hl[k]] <- -beta[k]
+        pair_adv_hist[[g + 1]] <- pair_adv_mat    # snapshot as a matrix
+      } else {
+        pair_adv_hist[[g + 1]] <- .pairs_to_table(ps$plo, ps$phi, beta)
+      }
     }
   }
   ratings$Ratings <- r
+
+  pair_adv <- if (as_matrix) .pairs_into_matrix(pair_adv_mat, ps$plo, ps$phi, beta) else
+    .pairs_to_table(ps$plo, ps$phi, beta)
 
   # Return final ratings, full history, pairwise advantages, K-factors, predictions, and updated player IDs
   return(list(
     ratings = ratings,
     ratings_hist = ratings_hist,
-    pair_adv = pair_adv_mat,
+    pair_adv = pair_adv,
     pair_adv_hist = pair_adv_hist,
     K = K_guess,
     K2 = K2_guess,
@@ -749,7 +931,8 @@ run_pelo <- cmpfun(function(KK2, data, current_ratings, current_pair_adv_mat, pl
 #' @param ratings_history_obj A list of dataframes. Each dataframe should have at least
 #'                            two columns: the first column contains player names and
 #'                            the second column contains their ratings at a given time point.
-#' @param pair_adv_mat_history_obj Optional. A list of matrices of pairwise advantages,
+#' @param pair_adv_mat_history_obj Optional. A list of pairwise advantages (pair tables
+#'                                 or matrices, e.g. `run_pelo(...)$pair_adv_hist`),
 #'                                 corresponding to each time point in `ratings_history_obj`.
 #'                                 If `NULL`, pairwise advantage is assumed zero.
 #'
@@ -803,8 +986,16 @@ historical_win_prob <- function(ratings_history_obj, pair_adv_mat_history_obj = 
 
         # Extract pairwise advantage if provided, else zero
         if(!is.null(pair_adv_mat_history_obj)){
-          adv_mat <- pair_adv_mat_history_obj[[t]]
-          adv_ij <- adv_mat[player_i, player_j]
+          adv <- pair_adv_mat_history_obj[[t]]
+          if (is.data.frame(adv)) {          # pair table from run_pelo(pair_adv_format = "pairs")
+            a1 <- as.character(adv$Player1); a2 <- as.character(adv$Player2)
+            pi_ <- as.character(player_i); pj_ <- as.character(player_j)
+            hit <- which(a1 == pi_ & a2 == pj_)
+            adv_ij <- if (length(hit)) adv$PairAdv[hit[1]] else {
+              hit <- which(a1 == pj_ & a2 == pi_); if (length(hit)) -adv$PairAdv[hit[1]] else 0 }
+          } else {
+            adv_ij <- adv[as.character(player_i), as.character(player_j)]
+          }
         } else {
           adv_ij <- 0
         }
@@ -976,8 +1167,12 @@ optimize_elo_k <- function(
 #' @param initial_ratings A data frame with columns \code{Player} and
 #'   \code{Ratings} holding the initial PElo ratings of all competitors (e.g. from
 #'   \code{initialize_ratings}). Rows are matched to players by name.
-#' @param initial_pair_adv_mat A numeric matrix representing the initial
-#'   pairwise advantage parameters.
+#' @param initial_pair_adv_mat Pairwise advantages at the start: a pair table
+#'   (data frame with columns `Player1`, `Player2`, `PairAdv`, where `PairAdv` is
+#'   Player1's advantage over Player2; pairs not listed start at 0), `NULL` for
+#'   all zero (default), or a square matrix with player names as row and column
+#'   names (e.g. from `initialize_pair_adv_mat()`). Internally only pairs that
+#'   occur are stored, so memory doesn't grow with the square of the number of players.
 #' @param kk2_init Numeric vector of length two specifying the initial
 #'   values of the PElo K-factors. Default is \code{c(30, 30)}.
 #' @param lower Numeric vector of length two specifying the lower bounds
@@ -1001,7 +1196,7 @@ optimize_elo_k <- function(
 optimize_pelo_kk2 <- function(
     data,
     initial_ratings,
-    initial_pair_adv_mat,
+    initial_pair_adv_mat = NULL,
     kk2_init = c(30, 30),
     lower = c(-500, -500),
     upper = c(500, 500)
